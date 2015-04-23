@@ -1,12 +1,15 @@
 #!/bin/env python
 """pythonista therminsim - a simple theramin style simulator
 
-X axis: frequency
-Y axis: volume
+y axis: frequency
+x axis: volume
 
-Eventually: multitouch
+multitouch works, but best if ios gestures are disabled
 
-Inspired by http://ptheremin.sourceforge.net, but completely rewritten for numpy/pythonista
+in retrospect, should have one audio thread, and feed a list of freq/vols for the different fingers, rather than run multiple threads
+
+
+Inspired by http://ptheremin.sourceforge.net, but completely rewritten for numpy/pythonista.
 """
 
 import numpy
@@ -17,7 +20,7 @@ import tempfile
 import sound
 #set min and max frequencies (hz)
 fmin=150.0
-fmax=1000.0
+fmax=1600.0
 
 class PlaybackThread(threading.Thread):
     """A thread that continually generates audio."""
@@ -25,7 +28,7 @@ class PlaybackThread(threading.Thread):
     def __init__(self, name, dt):
         #self.name = name
 
-        self.fs = 4000.0 # the sample frequency
+        self.fs = 2*11050.0 # the sample frequency
         self.ft = fmin # the tone frequency of the instrument
         self.vol = 1  #0-1
 
@@ -42,7 +45,8 @@ class PlaybackThread(threading.Thread):
         
     def run(self):
         def tone_gen():            
-            """Generate approximately dt's worth of tone.  Start/stop when signal is near zero, to avoid glitches.  this doesnt really work"""
+            """Generate approximately dt's worth of tone.  attempts to Start/stop when signal is near zero, to avoid glitches.  this doesnt really work"""
+            #foolish overoptimization
             ft = self.ft
             dt = self.dt
             fs = self.fs
@@ -52,8 +56,8 @@ class PlaybackThread(threading.Thread):
             vol = self.vol
             numCycles = floor(ft*dt)
             numSamples = floor(numCycles/ft*fs)
-            return  ( 127 + 128*0.95*vol * sin(twopift*self.t[0:numSamples])).astype('u1').tostring()
-
+            return   (127 + 128* vol*sin(twopift*self.t[0:numSamples])).astype('u1').tostring()
+            #return   (127 + 128* vol*sin(twopift*self.t)).astype('u1').tostring()
         def gen_file(file):
             tone=tone_gen()
             file.seek(0,0)
@@ -71,7 +75,7 @@ class PlaybackThread(threading.Thread):
 
         gen_file(filelist[idx])
         playerlist[idx] = sound.Player(filelist[idx].name)
-        
+
         tic = time.time
         while self.alive:
             t0=tic()
@@ -84,8 +88,10 @@ class PlaybackThread(threading.Thread):
             p=playerlist[idx] = sound.Player(filelist[idx].name)
             #4) sleep
             try:
-               time.sleep((t0+dt-tic())-0.005)
-               #time.sleep((p.duration-p.current_time))
+               #we want to sleep just long enough to start next player
+               # this is trial and error....
+               time.sleep((t0+dt-tic()))
+               #time.sleep((p.duration-p.current_time)*0.5)
             except:
                 pass
         self.cleanup()
@@ -95,6 +101,7 @@ class PlaybackThread(threading.Thread):
             [x.close() for x in self.filelist]
         except:
             pass
+            
     def stop(self):
         self.alive = False
 
@@ -110,9 +117,10 @@ class PlaybackThread(threading.Thread):
         self.recording = []
 
 class Theramin(ui.View):
+    '''multitouch enabled realtime sound generation'''
     def __init__(self,dt):
-        self.t={}
-        self.dt=dt
+        self.t={}   #threads
+        self.dt=dt  #update interval
     def touch_began(self,touch):
         self.t[touch.touch_id]=PlaybackThread(name="test",dt=self.dt)
         (x,y)=touch.location
@@ -124,6 +132,7 @@ class Theramin(ui.View):
     def touch_ended(self,touch):
         try:
             self.t[touch.touch_id].stop()
+            del(t[touch.touch_id])
         except KeyError:
             pass
     def setfreq(self,touch_id,freq,vol):
@@ -137,7 +146,7 @@ class Theramin(ui.View):
             except:
                 pass
 if __name__ == '__main__':
-    v=Theramin(0.1)
+    v=Theramin(0.11)
     v.present()
-
+    console.hud_alert('turn off ios gestures. use fingers to make sounds.pitch=vert, vol=horiz',duration=5.0)
 
