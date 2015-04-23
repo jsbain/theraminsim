@@ -1,2 +1,0 @@
-# theraminsim
-pythonista theramin simulation
