@@ -18,6 +18,8 @@ import time
 import wave
 import tempfile
 import sound
+import ui
+import console
 #set min and max frequencies (hz)
 fmin=150.0
 fmax=1600.0
@@ -27,9 +29,10 @@ class PlaybackThread(threading.Thread):
 
     def __init__(self, name, dt):
         #self.name = name
-
+        self.f={}
+        self.vollist={}
         self.fs = 2*11050.0 # the sample frequency
-        self.ft = fmin # the tone frequency of the instrument
+        #self.ft = fmin # the tone frequency of the instrument
         self.vol = 1  #0-1
 
         # setup ping pong file/players
@@ -40,24 +43,24 @@ class PlaybackThread(threading.Thread):
 
         self.dt = dt #update interval
         self.idx = 0 # which buffer are we writing to
-        self.t = numpy.linspace(0,self.dt,np.round(self.dt*self.fs))  
+        self.t = numpy.linspace(0,self.dt,numpy.round(self.dt*self.fs))  
         threading.Thread.__init__(self, name=name)
         
     def run(self):
         def tone_gen():            
             """Generate approximately dt's worth of tone.  attempts to Start/stop when signal is near zero, to avoid glitches.  this doesnt really work"""
             #foolish overoptimization
-            ft = self.ft
+            f=self.f
             dt = self.dt
             fs = self.fs
-            twopift = 2*numpy.pi*ft
             sin = numpy.sin
             floor=numpy.floor
-            vol = self.vol
-            numCycles = floor(ft*dt)
-            numSamples = floor(numCycles/ft*fs)
-            return   (127 + 128* vol*sin(twopift*self.t[0:numSamples])).astype('u1').tostring()
-            #return   (127 + 128* vol*sin(twopift*self.t)).astype('u1').tostring()
+            y=numpy.zeros_like(self.t)
+            for ft,vol in f.values():
+                y+=(vol*sin(2*numpy.pi*ft*self.t))
+            #scale so we dont compress
+            scaling=1.0/max([max(y), 1.0])
+            return (128+127*y*scaling).astype('u1').tostring()
         def gen_file(file):
             tone=tone_gen()
             file.seek(0,0)
@@ -90,12 +93,18 @@ class PlaybackThread(threading.Thread):
             try:
                #we want to sleep just long enough to start next player
                # this is trial and error....
-               time.sleep((t0+dt-tic()))
+               time.sleep(0.99*(t0+dt-tic()))
                #time.sleep((p.duration-p.current_time)*0.5)
             except:
                 pass
         self.cleanup()
-        
+    def addtone(self,key,f,vol):
+        self.f[key]=f,vol
+    def deltone(self,key):
+        try:          
+             del(self.f[key])
+        except KeyError:
+            pass
     def cleanup(self):
         try:
             [x.close() for x in self.filelist]
@@ -121,29 +130,24 @@ class Theramin(ui.View):
     def __init__(self,dt):
         self.t={}   #threads
         self.dt=dt  #update interval
+        self.t=PlaybackThread(name="test",dt=self.dt)
+        self.t.start()
     def touch_began(self,touch):
-        self.t[touch.touch_id]=PlaybackThread(name="test",dt=self.dt)
         (x,y)=touch.location
         self.setfreq(touch.touch_id,y/self.height,x/self.width)
-        self.t[touch.touch_id].start()
     def touch_moved(self,touch):
         (x,y)=touch.location
         self.setfreq(touch.touch_id,y/self.height,x/self.width)
     def touch_ended(self,touch):
-        try:
-            self.t[touch.touch_id].stop()
-            del(t[touch.touch_id])
-        except KeyError:
-            pass
+        self.t.deltone(touch.touch_id)
+
     def setfreq(self,touch_id,freq,vol):
         freq=fmin+(fmax-fmin)*(1-freq)
-        self.t[touch_id].vol=vol
-        self.t[touch_id].ft=freq
+        self.t.addtone(touch_id,freq,vol)
     def will_close(self):
-        for t in self.t.values():
-            try:
-                t.stop()
-            except:
+        try:
+                self.t.stop()
+        except:
                 pass
 if __name__ == '__main__':
     v=Theramin(0.11)
