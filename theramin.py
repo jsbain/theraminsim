@@ -36,8 +36,8 @@ class PlaybackThread(threading.Thread):
         self.vol = 1  #0-1
 
         # setup ping pong file/players
-        self.filelist = [tempfile.NamedTemporaryFile(),
-                         tempfile.NamedTemporaryFile()]
+        self.filelist = [tempfile.NamedTemporaryFile(suffix='.wav'),
+                         tempfile.NamedTemporaryFile(suffix='.wav')]
         #
         self.alive = True    
 
@@ -130,6 +130,7 @@ class Theramin(ui.View):
     def __init__(self,dt):
         self.t={}   #threads
         self.dt=dt  #update interval
+        self.multitouch_enabled=True
         self.t=PlaybackThread(name="test",dt=self.dt)
         self.t.start()
     def touch_began(self,touch):
